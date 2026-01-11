@@ -75,6 +75,28 @@ class IssueSegment(BaseModel):
     fix: str
     tone: Dict[str, str]
 
+class SignalBreakdownItem(BaseModel):
+    signal: str
+    weight: float
+    percent: float
+    segments: int
+
+class SignalBreakdown(BaseModel):
+    mode: str
+    total_weight: float
+    items: List[SignalBreakdownItem]
+
+class Peak(BaseModel):
+    t: int
+    value: float
+    segment_id: int
+
+class TimelineHeatmap(BaseModel):
+    bin_size_sec: float
+    duration_sec: float
+    values: List[float]
+    peaks: List[Peak]
+
 class AnalysisResponse(BaseModel):
     run_id: str
     video_id: str
@@ -82,7 +104,9 @@ class AnalysisResponse(BaseModel):
     clarity_score: int
     clarity_tier: str
     segments: List[IssueSegment]
-    rephrased_pitch: str  # Complete rewritten version of the pitch
+    signal_breakdown: SignalBreakdown
+    timeline_heatmap: TimelineHeatmap
+    rephrased_pitch: Optional[str] = None
 
 @app.get("/health")
 async def health_check():
@@ -191,6 +215,8 @@ async def analyze_video(request: AnalyzeRequest):
     Combines Person A's TwelveLabs transcript with Person B's AI analysis
     """
     try:
+        # Generate unique run ID
+        run_id = str(uuid.uuid4())
         video_id = request.video_id
         
         # Check cache first
@@ -410,67 +436,97 @@ async def analyze_video(request: AnalyzeRequest):
                     evidence_dict["structure_violations"] = structure_violations
                     evidence_dict["segment_role"] = analysis['role'].role
                 
-                issue = IssueSegment(
-                    segment_id=window['window_id'],
-                    start_sec=window['start_sec'],
-                    end_sec=window['end_sec'],
-                    risk=risk,
-                    severity="high" if risk >= 6.0 else "medium",
-                    signals_triggered=triggered_signals,
-                    label=label_fix.label,
-                    evidence=evidence_dict,
-                    fix=label_fix.fix,
-                    tone={
-                        "kind": roast.kind,
-                        "honest": roast.honest,
-                        "brutal": roast.brutal
-                    }
-                )
-                
-                issues.append(issue)
-        
-        # Step 4: Compute clarity score
-        clarity_score = SignalHelpers.compute_clarity_score(total_risk, len(windows))
-        clarity_tier = SignalHelpers.get_clarity_tier(clarity_score)
-        
-        # Step 5: Generate complete rephrased pitch
-        print(f"🔄 Generating rephrased pitch...")
-        full_transcript = transcript_result.get("text", "")
-        
-        # Convert issues to dict format for the rephrasing function
-        issues_for_rephrasing = [
-            {
-                "start_sec": issue.start_sec,
-                "end_sec": issue.end_sec,
-                "label": issue.label,
-                "fix": issue.fix
+                try:
+                    issue = IssueSegment(
+                        segment_id=window['window_id'],
+                        start_sec=window['start_sec'],
+                        end_sec=window['end_sec'],
+                        risk=risk,
+                        severity="high" if risk > 7 else "medium" if risk > 4 else "low",
+                        signals_triggered=triggered_signals,
+                        label=label_fix.label,
+                        evidence=evidence_dict,
+                        fix=label_fix.fix,
+                        tone={
+                            "kind": roast.kind,
+                            "honest": roast.honest,
+                            "brutal": roast.brutal
+                        }
+                    )
+                    print(f"Created issue segment {window['window_id']} with risk {risk}")
+                    issues.append(issue)
+                except Exception as e:
+                    print(f"❌ Error creating issue segment: {str(e)}")
+                    # Create a minimal valid issue to keep the analysis running
+                    issues.append(IssueSegment(
+                        segment_id=window['window_id'],
+                        start_sec=window['start_sec'],
+                        end_sec=window['end_sec'],
+                        risk=risk,
+                        severity="medium",
+                        signals_triggered=[],
+                        label="Analysis Error",
+                        evidence={},
+                        fix="Please try again",
+                        tone={"kind": "", "honest": "", "brutal": ""}
+                    ))
+
+        # Compute signal breakdown for donut chart
+        try:
+            print("Computing signal breakdown...")
+            from analytics import compute_signal_breakdown
+            signal_breakdown = compute_signal_breakdown(issues, mode="weighted")
+            print(f"Signal breakdown computed: {signal_breakdown}")
+        except Exception as e:
+            print(f"❌ Error computing signal breakdown: {str(e)}")
+            signal_breakdown = {
+                "mode": "weighted",
+                "total_weight": 0,
+                "items": []
             }
-            for issue in issues
-        ]
         
-        rephrased_pitch = llm_tools.generate_rephrased_pitch(
-            original_transcript=full_transcript,
-            issues=issues_for_rephrasing,
-            clarity_score=clarity_score,
-            clarity_tier=clarity_tier
-        )
+        # Compute timeline heatmap
+        try:
+            print("Computing timeline heatmap...")
+            from timeline import build_timeline_heatmap
+            timeline_heatmap = build_timeline_heatmap(issues)
+            print(f"Timeline heatmap computed: {timeline_heatmap}")
+        except Exception as e:
+            print(f"❌ Error computing timeline heatmap: {str(e)}")
+            timeline_heatmap = {
+                "bin_size_sec": 1.0,
+                "duration_sec": 0.0,
+                "values": [],
+                "peaks": []
+            }
         
-        # Step 6: Build response
-        response = AnalysisResponse(
-            run_id=str(uuid.uuid4()),
-            video_id=video_id,
-            video_title=video_id,
-            clarity_score=clarity_score,
-            clarity_tier=clarity_tier,
-            segments=issues,
-            rephrased_pitch=rephrased_pitch
-        )
-        
-        # Cache result
-        analysis_cache[video_id] = response
-        print(f"✅ Analysis complete for {video_id}: {clarity_score}/100, {len(issues)} issues found")
-        
-        return response
+        # Generate rephrased pitch
+        try:
+            print("Generating rephrased pitch...")
+            original_transcript = "\n".join(window["text"] for window in windows)
+            rephrased_pitch = llm_tools.generate_rephrased_pitch(
+                original_transcript,
+                issues,
+                int(100 - (total_risk / len(windows) * 10)),  # clarity_score
+                "needs work" if total_risk > 20 else "good"  # clarity_tier
+            )
+            print("Rephrased pitch generated")
+        except Exception as e:
+            print(f"❌ Error generating rephrased pitch: {str(e)}")
+            rephrased_pitch = None
+
+        # Return analysis result
+        return {
+            "run_id": run_id,
+            "video_id": video_id,
+            "video_title": video_id,  # TODO: Store actual titles
+            "clarity_score": int(100 - (total_risk / len(windows) * 10)),
+            "clarity_tier": "needs work" if total_risk > 20 else "good",
+            "segments": issues,
+            "signal_breakdown": signal_breakdown,
+            "timeline_heatmap": timeline_heatmap,
+            "rephrased_pitch": rephrased_pitch
+        }
         
     except HTTPException:
         raise

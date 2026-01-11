@@ -2,6 +2,8 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useRef, useState, useEffect, useMemo } from 'react';
+import { SignalDonut } from '../components/SignalDonut';
+import { ProgressBarHeatmap } from '../components/ProgressBarHeatmap';
 
 interface Issue {
   id: string;
@@ -26,6 +28,32 @@ type BackendSegment = {
   tone?: { kind?: string; honest?: string; brutal?: string };
 };
 
+type SignalBreakdownItem = {
+  signal: string;
+  weight: number;
+  percent: number;
+  segments: number;
+};
+
+type SignalBreakdown = {
+  mode: string;
+  total_weight: number;
+  items: SignalBreakdownItem[];
+};
+
+type TimelineHeatmapPeak = {
+  t: number;
+  value: number;
+  segment_id: number;
+};
+
+interface TimelineHeatmap {
+  bin_size_sec: number;
+  duration_sec: number;
+  values: number[];
+  peaks: TimelineHeatmapPeak[];
+};
+
 type BackendAnalysis = {
   run_id: string;
   video_id: string;
@@ -33,6 +61,9 @@ type BackendAnalysis = {
   clarity_score: number;
   clarity_tier: string;
   segments: BackendSegment[];
+  signal_breakdown: SignalBreakdown;
+  timeline_heatmap: TimelineHeatmap;
+  rephrased_pitch?: string;
 };
 
 function makeAnalysisStorageKey(filename: string) {
@@ -56,6 +87,9 @@ export default function ResultsPage() {
   const [clarityTier, setClarityTier] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<BackendAnalysis | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
+  const [signalBreakdown, setSignalBreakdown] = useState<SignalBreakdown | null>(null);
+  const [timelineHeatmap, setTimelineHeatmap] = useState<TimelineHeatmap | null>(null);
+  const [rephrasedPitch, setRephrasedPitch] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -88,7 +122,20 @@ export default function ResultsPage() {
   const selectedIntensityMeta =
     intensityOptions.find((o) => o.value === selectedIntensity) ?? intensityOptions[1];
 
-  const formatTime = (seconds: number) => {
+  const getMarkerColor = (type: Issue['type']) => {
+  switch (type) {
+    case 'error':
+      return 'bg-red-500';
+    case 'warning':
+      return 'bg-yellow-500';
+    case 'success':
+      return 'bg-green-500';
+    default:
+      return 'bg-gray-500';
+  }
+};
+
+const formatTime = (seconds: number) => {
     if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
     const s = Math.floor(seconds);
     const h = Math.floor(s / 3600);
@@ -220,6 +267,9 @@ export default function ResultsPage() {
             setClarityScore(typeof parsed.clarity_score === 'number' ? parsed.clarity_score : null);
             setClarityTier(typeof parsed.clarity_tier === 'string' ? parsed.clarity_tier : null);
             setAnalysis(parsed);
+            setSignalBreakdown(parsed.signal_breakdown);
+            setTimelineHeatmap(parsed.timeline_heatmap);
+            setRephrasedPitch(parsed.rephrased_pitch || null);
             setLoading(false);
             // Clean up legacy key if present; keep new key for future intensity changes.
             try {
@@ -248,6 +298,9 @@ export default function ResultsPage() {
         setClarityScore(typeof data.analysis.clarity_score === 'number' ? data.analysis.clarity_score : null);
         setClarityTier(typeof data.analysis.clarity_tier === 'string' ? data.analysis.clarity_tier : null);
         setAnalysis(data.analysis);
+        setSignalBreakdown(data.analysis.signal_breakdown);
+        setTimelineHeatmap(data.analysis.timeline_heatmap);
+        setRephrasedPitch(data.analysis.rephrased_pitch || null);
         setLoading(false);
       } catch {
         if (cancelled) return;
@@ -345,7 +398,7 @@ export default function ResultsPage() {
 
   return (
     <div className="min-h-screen animated-gradient relative overflow-hidden text-white">
-      <section className="max-w-7xl mx-auto px-8 pt-10 pb-16">
+      <div className="max-w-7xl mx-auto px-8 pt-10 pb-16">
         {/* Header */}
         <div className="mb-6">
           <button
@@ -457,163 +510,182 @@ export default function ResultsPage() {
         </div>
 
         {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           {/* Video Player */}
-          <div className="bg-white/10 backdrop-blur-md rounded-3xl border border-white/20 overflow-hidden lg:h-[calc(100vh-330px)]">
-            <div className="h-full overflow-y-auto p-6">
+          <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20">
             <div className="aspect-video bg-black/40 rounded-2xl mb-5 overflow-hidden border border-white/10">
-            {filename ? (
-              <video 
-                className="w-full h-full cursor-pointer"
-                ref={videoRef}
-                onLoadedMetadata={(e) => {
-                  const d = (e.currentTarget as HTMLVideoElement).duration;
-                  setDuration(Number.isFinite(d) ? d : 0);
-                }}
-                onTimeUpdate={(e) => {
-                  setCurrentTime((e.currentTarget as HTMLVideoElement).currentTime);
-                }}
-                onClick={togglePlay}
-                src={`/api/video/${filename}`}
-              >
-                Your browser does not support the video tag.
-              </video>
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <p className="text-gray-300">No video selected</p>
-              </div>
-            )}
-          </div>
-          
-          {/* Custom controls (single scrub line with issue markers) */}
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={togglePlay}
-              className="w-10 h-10 rounded-full bg-white/10 border border-white/10 hover:bg-white/15 transition-colors flex items-center justify-center"
-              aria-label="Play/Pause"
-            >
-              {videoRef.current?.paused !== false ? (
-                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
-                </svg>
-              )}
-            </button>
-
-            <div className="flex-1">
-              <div
-                ref={timelineRef}
-                className="relative h-2 bg-white/10 rounded-full border border-white/10 cursor-pointer"
-                onClick={onTimelineClick}
-                role="slider"
-                aria-label="Video timeline"
-                aria-valuemin={0}
-                aria-valuemax={duration || undefined}
-                aria-valuenow={currentTime}
-              >
-                <div
-                  className="absolute inset-y-0 left-0 rounded-full bg-white/20"
-                  style={{
-                    width: duration > 0 ? `${Math.min(100, (currentTime / duration) * 100)}%` : '0%',
+              {filename ? (
+                <video 
+                  className="w-full h-full cursor-pointer"
+                  ref={videoRef}
+                  onLoadedMetadata={(e) => {
+                    const d = (e.currentTarget as HTMLVideoElement).duration;
+                    setDuration(Number.isFinite(d) ? d : 0);
                   }}
-                />
-
-                {duration > 0 &&
-                  markers.map((m) => {
-                    const rawPct = (m.seconds / duration) * 100;
-                    const leftPct = Math.min(99.5, Math.max(0.5, rawPct));
-                    const color =
-                      m.type === 'error' ? 'bg-red-500' : m.type === 'warning' ? 'bg-yellow-500' : 'bg-green-500';
-                    return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        className={`absolute top-1/2 w-3 h-3 rounded-full ${color} shadow-sm`}
-                        style={{ left: `${leftPct}%`, transform: 'translate(-50%, -50%)' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          seekToSeconds(m.seconds);
-                        }}
-                        aria-label="Jump to issue timestamp"
-                        title="Jump to issue"
-                      />
-                    );
-                  })}
-              </div>
-              <div className="flex items-center justify-between text-xs text-gray-300 mt-2 tabular-nums">
-                <span>{formatTime(currentTime)}</span>
-                <span>{duration > 0 ? formatTime(duration) : '--:--'}</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={toggleMute}
-              className="w-10 h-10 rounded-full bg-white/10 border border-white/10 hover:bg-white/15 transition-colors flex items-center justify-center"
-              aria-label="Mute/Unmute"
-            >
-              {videoRef.current?.muted ? (
-                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M16.5 12l3.5 3.5-1.5 1.5L15 13.5 11.5 17H8v-6H5V9h3V7h3.5L15 10.5l3.5-3.5 1.5 1.5z" />
-                </svg>
+                  onTimeUpdate={(e) => {
+                    setCurrentTime((e.currentTarget as HTMLVideoElement).currentTime);
+                  }}
+                  onClick={togglePlay}
+                  src={`/api/video/${filename}`}
+                >
+                  Your browser does not support the video tag.
+                </video>
               ) : (
-                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
-                </svg>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={toggleFullscreen}
-              className="w-10 h-10 rounded-full bg-white/10 border border-white/10 hover:bg-white/15 transition-colors flex items-center justify-center"
-              aria-label="Fullscreen"
-            >
-              <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M7 14H5v5h5v-2H7v-3zm0-4h2V7h3V5H5v5zm10 9h-3v2h5v-5h-2v3zm0-14V7h-3v2h5V5h-2z" />
-              </svg>
-            </button>
-          </div>
-
-          <div className="mt-6 pt-5 border-t border-white/10">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold tracking-wide text-white/90">Suggested fix</h2>
-              {selectedIssue ? (
-                <span className="text-xs text-gray-300 tabular-nums">
-                  {formatTime(selectedIssue.startSec)}–{formatTime(selectedIssue.endSec)}
-                </span>
-              ) : (
-                <span className="text-xs text-gray-300">{issueCounts.total} issues</span>
-              )}
-            </div>
-
-            {selectedIssue ? (
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-left">
-                <div className="text-sm font-semibold text-white mb-1">{selectedIssue.title}</div>
-                <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{selectedIssue.fix}</p>
-              </div>
-            ) : (
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-gray-300 text-sm">
-                Click an issue to see the suggested fix.
-              </div>
-            )}
-          </div>
-          </div>
-          </div>
-
-          {/* Issues List */}
-          <div className="bg-white/10 backdrop-blur-md rounded-3xl border border-white/20 overflow-hidden lg:h-[calc(100vh-330px)]">
-            <div className="h-full overflow-y-auto p-8">
-              {loading ? (
                 <div className="flex items-center justify-center h-full">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+                  <p className="text-gray-300">No video selected</p>
+                </div>
+              )}
+            </div>
+            
+            {/* Custom controls (single scrub line with issue markers) */}
+            <div className="flex items-center gap-4 mb-4">
+              {/* Play button */}
+              <button
+                onClick={togglePlay}
+                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+              >
+                {videoRef.current?.paused !== false ? (
+                  <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Timeline */}
+              <div className="flex-1">
+                <div
+                  ref={timelineRef}
+                  className="h-2 bg-white/20 rounded-full overflow-hidden cursor-pointer relative"
+                  onClick={onTimelineClick}
+                >
+                  {timelineHeatmap && (
+                    <ProgressBarHeatmap
+                      data={timelineHeatmap}
+                      currentTime={currentTime}
+                    />
+                  )}
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full bg-white/40 z-10"
+                    style={{
+                      width: duration > 0 ? `${Math.min(100, (currentTime / duration) * 100)}%` : '0%',
+                    }}
+                  />
+                  {duration > 0 &&
+                    markers.map((m) => {
+                      const rawPct = (m.seconds / duration) * 100;
+                      const leftPct = Math.min(99.5, Math.max(0.5, rawPct));
+                      return (
+                        <div
+                          key={m.id}
+                          className={`absolute top-1/2 -translate-y-1/2 w-1 h-3 -ml-0.5 rounded z-20 ${getMarkerColor(
+                            m.type
+                          )}`}
+                          style={{ left: `${leftPct}%` }}
+                          title={`Issue at ${formatTime(m.seconds)}`}
+                        />
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* Time */}
+              <div className="text-sm text-white/60 tabular-nums">
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </div>
+
+              {/* Volume */}
+              <button
+                onClick={toggleMute}
+                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+              >
+                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" />
+                </svg>
+              </button>
+
+              {/* Fullscreen */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="w-10 h-10 rounded-full bg-white/10 border border-white/10 hover:bg-white/15 transition-colors flex items-center justify-center"
+                aria-label="Fullscreen"
+              >
+                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M7 14H5v5h5v-2H7v-3zm0-4h2V7h3V5H5v5zm10 9h-3v2h5v-5h-2v3zm0-14V7h-3v2h5V5h-2z" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mt-6 pt-5 border-t border-white/10">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold tracking-wide text-white/90">Suggested fix</h2>
+                {selectedIssue ? (
+                  <span className="text-xs text-gray-300 tabular-nums">
+                    {formatTime(selectedIssue.startSec)}–{formatTime(selectedIssue.endSec)}
+                  </span>
+                ) : (
+                  <span className="text-xs text-gray-300">{issueCounts.total} issues</span>
+                )}
+              </div>
+
+              {selectedIssue ? (
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-left">
+                  <div className="text-sm font-semibold text-white mb-1">{selectedIssue.title}</div>
+                  <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{selectedIssue.fix}</p>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-gray-300 text-sm">
+                  Click an issue to see the suggested fix.
+                </div>
+              )}
+
+              {/* Rephrased Pitch */}
+              {rephrasedPitch && (
+                <div className="mt-6 pt-6 border-t border-white/10">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-semibold tracking-wide text-white/90">Rephrased Pitch</h2>
+                    <span className="text-xs text-gray-300">AI-enhanced version</span>
+                  </div>
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-left">
+                    <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">{rephrasedPitch}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Content Container */}
+          <div className="flex flex-col gap-4">
+            {/* Issues List */}
+            <div className="bg-white/10 backdrop-blur-md rounded-3xl p-8 border border-white/20 max-h-[500px] overflow-y-auto">
+              {loading ? (
+                <div className="flex flex-col items-center justify-center h-full gap-4">
+                  <div className="w-32 h-32 rounded-full overflow-hidden bg-white/5 border border-white/10">
+                    <video
+                      className="w-full h-full object-cover"
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                    >
+                      <source src="/loading.mp4" type="video/mp4" />
+                    </video>
+                  </div>
+                  <div className="text-center">
+                    <h3 className="text-2xl font-semibold mb-2">Analyzing your demo</h3>
+                    <p className="text-gray-400">Almost there...</p>
+                  </div>
+                  <div className="w-full max-w-md h-1 bg-white/10 rounded-full overflow-hidden mt-4">
+                    <div className="h-full bg-white/20 rounded-full w-1/2 animate-[progress_2s_ease-in-out_infinite]"></div>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-4">Usually takes ~1-2 mins</p>
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto space-y-3">
                   {issues.map((issue) => (
                     <div 
                       key={issue.id}
@@ -624,21 +696,12 @@ export default function ResultsPage() {
                         setSelectedSegmentId(issue.segmentId);
                         seekToSeconds(issue.startSec);
                       }}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          setSelectedSegmentId(issue.segmentId);
-                          seekToSeconds(issue.startSec);
-                        }
-                      }}
                     >
                       <div className="flex items-start gap-4">
                         {getIconForType(issue.type)}
                         <div className="flex-1">
                           <div className="flex items-start justify-between mb-1">
-                            <h3 className="font-semibold text-lg">{issue.title}</h3>
+                            <h3 className="font-semibold text-lg text-white">{issue.title}</h3>
                             <span className="text-yellow-500 font-mono text-sm">{issue.timestamp}</span>
                           </div>
                           <p className="text-gray-300 text-sm">{issue.description}</p>
@@ -649,9 +712,22 @@ export default function ResultsPage() {
                 </div>
               )}
             </div>
+
+            {/* Signal Breakdown */}
+            {!loading && signalBreakdown && (
+              <div className="bg-white/10 backdrop-blur-md rounded-3xl p-8 border border-white/20">
+                <div className="mb-6">
+                <h3 className="text-lg font-semibold text-white">Clarity Signal Distribution</h3>
+                <p className="text-sm text-gray-400 mt-1">Analysis of key clarity issues detected in your presentation</p>
+              </div>
+                <div className="flex justify-center">
+                  <SignalDonut data={signalBreakdown} />
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      </section>
+      </div>
     </div>
   );
 }
