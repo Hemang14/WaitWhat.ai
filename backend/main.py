@@ -82,6 +82,7 @@ class AnalysisResponse(BaseModel):
     clarity_score: int
     clarity_tier: str
     segments: List[IssueSegment]
+    rephrased_pitch: str  # Complete rewritten version of the pitch
 
 @app.get("/health")
 async def health_check():
@@ -432,14 +433,37 @@ async def analyze_video(request: AnalyzeRequest):
         clarity_score = SignalHelpers.compute_clarity_score(total_risk, len(windows))
         clarity_tier = SignalHelpers.get_clarity_tier(clarity_score)
         
-        # Step 5: Build response
+        # Step 5: Generate complete rephrased pitch
+        print(f"🔄 Generating rephrased pitch...")
+        full_transcript = transcript_result.get("text", "")
+        
+        # Convert issues to dict format for the rephrasing function
+        issues_for_rephrasing = [
+            {
+                "start_sec": issue.start_sec,
+                "end_sec": issue.end_sec,
+                "label": issue.label,
+                "fix": issue.fix
+            }
+            for issue in issues
+        ]
+        
+        rephrased_pitch = llm_tools.generate_rephrased_pitch(
+            original_transcript=full_transcript,
+            issues=issues_for_rephrasing,
+            clarity_score=clarity_score,
+            clarity_tier=clarity_tier
+        )
+        
+        # Step 6: Build response
         response = AnalysisResponse(
             run_id=str(uuid.uuid4()),
             video_id=video_id,
             video_title=video_id,
             clarity_score=clarity_score,
             clarity_tier=clarity_tier,
-            segments=issues
+            segments=issues,
+            rephrased_pitch=rephrased_pitch
         )
         
         # Cache result

@@ -616,6 +616,84 @@ Now write YOUR 3-line brutal roast for this issue. Be witty, sharp, and memorabl
             time.sleep(0.1)
         
         return results
+    
+    
+    def generate_rephrased_pitch(
+        self,
+        original_transcript: str,
+        issues: List[Dict],
+        clarity_score: int,
+        clarity_tier: str
+    ) -> str:
+        """
+        Generate a complete rephrased version of the entire pitch based on feedback.
+        
+        Args:
+            original_transcript: The full original transcript
+            issues: List of detected issues with fixes
+            clarity_score: Overall clarity score
+            clarity_tier: Clarity tier (e.g., "Judge Whisperer")
+        
+        Returns:
+            A complete rephrased pitch script
+        """
+        # Compile all the feedback
+        feedback_summary = []
+        for issue in issues:
+            feedback_summary.append(
+                f"- At {issue.get('start_sec', 0)}-{issue.get('end_sec', 0)}s: {issue.get('label', 'Issue')} - {issue.get('fix', '')}"
+            )
+        
+        feedback_text = "\n".join(feedback_summary) if feedback_summary else "No major issues detected."
+        
+        prompt = f"""You are a pitch coach helping rewrite a demo video script to be clearer and more compelling.
+
+ORIGINAL TRANSCRIPT:
+"{original_transcript}"
+
+CURRENT CLARITY SCORE: {clarity_score}/100 ({clarity_tier})
+
+FEEDBACK TO ADDRESS:
+{feedback_text}
+
+Generate a COMPLETE REPHRASED VERSION of this pitch that:
+1. Fixes all the issues mentioned in the feedback
+2. Maintains the same structure and key points
+3. Keeps it concise (similar length to original)
+4. Defines technical terms inline
+5. Provides evidence for claims
+6. Uses clear, punchy language
+7. Follows good pitch structure (problem → solution → demo/proof)
+
+Return ONLY the rephrased pitch script (no explanations, no meta-commentary).
+The speaker should be able to read this directly as their new script.
+
+REPHRASED PITCH:"""
+        
+        try:
+            response = self.model.generate_content(
+                prompt,
+                generation_config={
+                    "temperature": 0.7,  # Creative but coherent
+                    "top_p": 0.9
+                }
+            )
+            rephrased = response.text.strip()
+            
+            # Clean any markdown formatting
+            if "```" in rephrased:
+                rephrased = rephrased.split("```")[0].strip()
+            
+            # Remove any "REPHRASED PITCH:" header if the model added it
+            if rephrased.startswith("REPHRASED PITCH:"):
+                rephrased = rephrased.replace("REPHRASED PITCH:", "").strip()
+            
+            return rephrased
+            
+        except Exception as e:
+            print(f"Warning: Pitch rephrasing failed: {e}")
+            # Fallback: return a simple improved version
+            return f"{original_transcript}\n\n[Note: Enhanced version generation failed. Please apply the timestamp-specific suggestions manually.]"
 
 
 # Convenience function for one-off usage
