@@ -1,4 +1,4 @@
-# WaitWhat.ai –
+# WaitWhat.ai
 AI-powered tool that detects confusing moments in demo videos using timestamped clarity analysis — with optional roast mode.
 
 ---
