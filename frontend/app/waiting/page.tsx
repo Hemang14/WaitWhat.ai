@@ -475,7 +475,7 @@ export default function WaitingPage() {
                 </div>
               </div>
 
-              <div className="mt-6 text-xs text-gray-400 text-center max-w-lg mx-auto leading-relaxed">
+              <div className="mt-4 text-xs text-gray-400 text-center max-w-lg mx-auto leading-relaxed">
                 Tip: {tips[Math.min(tips.length - 1, tipIndex)]}
               </div>
             </div>
