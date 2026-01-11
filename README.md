@@ -103,34 +103,34 @@ Video Understanding	TwelveLabs API
 LLM Analysis	Google Gemini
 Deployment	Vercel + Render
 
-📁 Project Structure
-vbnet
-Copy code
-WaitWhat.ai/
-├── backend/
-│   ├── llm_tools.py
-│   ├── signal_helpers.py
-│   ├── fastapi_app.py
-│   ├── requirements.txt
-│   └── example_integration.py
-├── frontend/
-│   └── (Next.js app)
-└── README.md
-⚡ Quick Start
-Backend
-bash
-Copy code
+
+## ⚡ Quick Start
+
+### Backend
+
+```bash
+# Clone the repository, then:
 cd backend
+
+# Create and activate virtual environment
+python -m venv .venv
+
+# macOS / Linux
+source .venv/bin/activate
+
+# Windows PowerShell
+# .venv\Scripts\Activate.ps1
+
+# Install dependencies inside the venv
 pip install -r requirements.txt
-export GEMINI_API_KEY=your-key
-export TWELVE_LABS_API_KEY=your-key
-python fastapi_app.py
-Frontend
-bash
-Copy code
-cd frontend
-npm install
-npm run dev
+
+# Set API keys (or add them to a .env file)
+export GEMINI_API_KEY=your-gemini-key
+export TWELVE_LABS_API_KEY=your-twelvelabs-key
+
+# Run the backend server with Uvicorn
+uvicorn main:app --reload
+```
 🚀 Future Enhancements
 Slide-to-speech alignment scoring
 
