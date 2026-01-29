@@ -27,7 +27,7 @@ export default function StickyHeader() {
           style={{ opacity: blurOpacity }}
         />
         <div className="relative z-10 flex items-center gap-3">
-          <div className="h-10 w-10 overflow-hidden rounded-full border border-white/10 bg-white/5">
+          <div className="h-10 w-10 overflow-hidden rounded-xl border border-white/10 bg-white/5">
             <Image 
               src="/logo.png" 
               alt="Wait What?!?" 

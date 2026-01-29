@@ -30,6 +30,90 @@ export default function WaitingPage() {
     return () => window.clearInterval(t);
   }, [done, stages.length]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!filename) return;
+
+      try {
+        // 1) Poll transcript until available
+        const maxWaitMs = 2 * 60 * 1000; // 2 minutes
+        const start = Date.now();
+        let transcriptReady = false;
+
+        while (Date.now() - start < maxWaitMs && !transcriptReady) {
+          const tRes = await fetch(`/api/transcript/${encodeURIComponent(filename)}`, { 
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json' }
+          });
+          
+          if (tRes.status === 200) {
+            transcriptReady = true;
+            break;
+          }
+          if (tRes.status !== 409) {
+            throw new Error('Transcript failed');
+          }
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+
+        if (!transcriptReady) {
+          throw new Error('Transcript timeout');
+        }
+
+        // 2) Analyze
+        const res = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({ 
+            video_id: filename,
+            context: null // Add context if needed
+          })
+        });
+
+        if (!res.ok) {
+          throw new Error(`Analysis failed: ${res.statusText}`);
+        }
+
+        const data = await res.json();
+        if (!data?.success || !data?.analysis) {
+          throw new Error('Invalid analysis response');
+        }
+
+        if (cancelled) return;
+
+        // Store analysis for results page
+        try {
+          sessionStorage.setItem(`analysis:${filename}`, JSON.stringify(data.analysis));
+        } catch (err) {
+          console.error('Failed to store analysis:', err);
+        }
+
+        setDone(true);
+
+        // Small delay to show success state
+        await new Promise((r) => setTimeout(r, 900));
+        if (cancelled) return;
+
+        router.replace(`/results?file=${encodeURIComponent(filename)}&intensity=${intensity}`);
+      } catch (err) {
+        console.error('Analysis error:', err);
+        if (cancelled) return;
+        // Even on error, try to proceed to results page
+        router.replace(`/results?file=${encodeURIComponent(filename)}&intensity=${intensity}`);
+      }
+    }
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [filename, intensity, router]);
+
   return (
     <div className="min-h-screen animated-gradient relative overflow-hidden text-white">
       <section className="max-w-7xl mx-auto px-8 pt-14 pb-16">

@@ -26,7 +26,7 @@ export default function IntroHero() {
     >
       <div className="flex flex-col items-center">
         <motion.div 
-          className="relative h-64 w-64 overflow-hidden rounded-full border border-white/10 bg-white/5 shadow-2xl mb-8"
+          className="relative h-64 w-64 overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl mb-8"
           style={{
             x: logoX,
             y: logoY,

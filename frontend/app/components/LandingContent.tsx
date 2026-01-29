@@ -151,10 +151,13 @@ export default function LandingContent() {
         </div>
       </div>
 
-      {/* Connector Line */}
+      {/* Progress Connector */}
       {uploadSuccess && (
         <div className="flex justify-center">
-          <div className="w-0.5 h-8 bg-gradient-to-b from-white to-transparent"></div>
+          <div className="relative w-0.5 h-8">
+            <div className="absolute inset-0 bg-gradient-to-b from-white to-transparent opacity-50 blur-sm" />
+            <div className="absolute inset-0 bg-gradient-to-b from-white to-transparent" />
+          </div>
         </div>
       )}
 
@@ -224,10 +227,13 @@ export default function LandingContent() {
         </div>
       </div>
 
-      {/* Connector Line */}
+      {/* Progress Connector */}
       {uploadSuccess && (
         <div className="flex justify-center">
-          <div className="w-0.5 h-8 bg-gradient-to-b from-white to-transparent"></div>
+          <div className="relative w-0.5 h-8">
+            <div className="absolute inset-0 bg-gradient-to-b from-white to-transparent opacity-50 blur-sm" />
+            <div className="absolute inset-0 bg-gradient-to-b from-white to-transparent" />
+          </div>
         </div>
       )}
 
@@ -269,7 +275,7 @@ export default function LandingContent() {
           disabled={!uploadSuccess || uploading || (contextOpen && !context)}
           className={`w-full text-lg font-semibold px-8 py-4 rounded-xl transition-all inline-flex items-center justify-center gap-3 ${uploadSuccess && !uploading && (!contextOpen || context) ? 'bg-white hover:bg-gray-100 text-purple-600 cursor-pointer shadow-lg hover:shadow-xl' : 'bg-gray-400 text-gray-600 cursor-not-allowed'}`}
         >
-          Analyze My Demo
+          Get clarity feedback
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
           </svg>
