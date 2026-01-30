@@ -4,7 +4,7 @@ AI-powered tool that detects confusing moments in demo videos using timestamped 
 ---
 ## 🎥 Demo Video
 
-[![Watch the demo](https://img.youtube.com/vi/VsTi3UBcB50/maxresdefault.jpg)](https://youtu.be/VsTi3UBcB50)
+[![Watch the demo](https://img.youtube.com/vi/VsTi3UBcB50/0.jpg)](https://youtu.be/VsTi3UBcB50)
 
 _Click the image to watch the full demo._
 --
