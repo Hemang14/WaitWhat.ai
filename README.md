@@ -2,6 +2,12 @@
 AI-powered tool that detects confusing moments in demo videos using timestamped clarity analysis — with optional roast mode.
 
 ---
+## 🎥 Demo Video
+
+[![Watch the demo](https://img.youtube.com/vi/VsTi3UBcB50/maxresdefault.jpg)](https://youtu.be/VsTi3UBcB50)
+
+_Click the image to watch the full demo._
+--
 
 ## 🚨 Problem
 Great ideas fail not because they’re bad, but because the **demo explanation collapses under pressure**. Traditional feedback like “be clearer” or “slow down” is vague and not actionable.
