@@ -9,14 +9,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'No file uploaded' }, { status: 400 });
     }
 
-    const backendBase = process.env.NEXT_PUBLIC_BACKEND_BASE_URL ?? 'http://127.0.0.1:9000';
+    const backendBase =
+      process.env.BACKEND_BASE_URL ?? 'http://127.0.0.1:9000';
     const form = new FormData();
     form.append('file', file, file.name);
 
-    const res = await fetch(`${backendBase}/upload`, {
-      method: 'POST',
-      body: form,
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${backendBase}/upload`, {
+        method: 'POST',
+        body: form,
+      });
+    } catch (error) {
+      console.error('Upload proxy error:', { backendBase, error });
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Could not reach backend at ${backendBase} (upload). Is FastAPI running?`,
+        },
+        { status: 502 }
+      );
+    }
 
     const payload = await res.json().catch(() => null);
     if (!res.ok) {
